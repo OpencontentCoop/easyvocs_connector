@@ -1,5 +1,5 @@
 <?php /* #?ini charset="utf-8"?
 
 [ExtensionSettings]
-DesignExtensions[]=ontopia_connector
+DesignExtensions[]=easyvocs_connector
 */ ?>

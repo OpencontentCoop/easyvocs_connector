@@ -2,13 +2,13 @@
 
 use Opencontent\Opendata\Api\Values\Content;
 
-class OntopiaConnectorType extends eZDataType
+class EasyVocsConnectorType extends eZDataType
 {
-    const DATA_TYPE_STRING = 'ontopiaconnector';
+    const DATA_TYPE_STRING = 'easyvocsconnector';
 
     const ENPOINT_FIELD = 'data_text1';
 
-    const ENDPOINT_VARIABLE = '_ontopiaconnector_endpoint_';
+    const ENDPOINT_VARIABLE = '_easyvocsconnector_endpoint_';
 
     const DATA_FIELD = 'data_text';
 
@@ -20,7 +20,7 @@ class OntopiaConnectorType extends eZDataType
     {
         $this->eZDataType(
             self::DATA_TYPE_STRING,
-            ezpI18n::tr('extension/ontopiaconnector', 'OntoPia Connector'),
+            ezpI18n::tr('extension/easyvocsconnector', 'Easy Vocs Connector'),
             array('serialize_supported' => true)
         );
     }
@@ -148,6 +148,15 @@ class OntopiaConnectorType extends eZDataType
      */
     function onPublish($contentObjectAttribute, $contentObject, $publishedNodes)
     {
+        $endPoint = $contentObjectAttribute->contentClassAttribute()->attribute(self::ENPOINT_FIELD);
+        $response = self::getEasyVocsData($endPoint, $contentObject);
+        if ($response){
+            $contentObjectAttribute->setAttribute(self::DATA_FIELD, $response);
+        }
+    }
+
+    public static function getEasyVocsData($endPoint, eZContentObject $contentObject)
+    {
         try {
             $request = new ezpRestRequest(
                 null,
@@ -164,12 +173,11 @@ class OntopiaConnectorType extends eZDataType
             $mapperEnv->requestBaseUri = $requestBaseUri;
             $mapperContent = $mapperEnv->filterContent($apiContent);
 
-            $endPoint = $contentObjectAttribute->contentClassAttribute()->attribute(self::ENPOINT_FIELD);
-
             $data = json_encode($mapperContent);
 
             $headers = array();
             $headers[] = 'Content-Type: application/json';
+            $headers[] = 'ContentType: application/json';
             $headers[] = 'Content-Length: ' . strlen($data);
 
             $ch = curl_init();
@@ -200,16 +208,18 @@ class OntopiaConnectorType extends eZDataType
                 $errorCode = curl_errno($ch) * -1;
                 $errorMessage = curl_error($ch);
                 curl_close($ch);
-                eZDebug::writeError("Error $errorCode: $errorMessage", __METHOD__);
-            }else{
-                $contentObjectAttribute->setAttribute(self::DATA_FIELD, $response);
+                eZDebug::writeError("Error $errorCode: $errorMessage on endpoint $endPoint", __METHOD__);
             }
+
+            return $response;
 
         } catch (Exception $e) {
             eZDebug::writeError($e->getMessage(), __METHOD__);
         }
+
+        return null;
     }
 
 }
 
-eZDataType::register(OntopiaConnectorType::DATA_TYPE_STRING, 'OntopiaConnectorType');
+eZDataType::register(EasyVocsConnectorType::DATA_TYPE_STRING, 'EasyVocsConnectorType');
