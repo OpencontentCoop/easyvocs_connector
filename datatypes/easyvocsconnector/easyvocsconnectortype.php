@@ -8,7 +8,11 @@ class EasyVocsConnectorType extends eZDataType
 
     const ENPOINT_FIELD = 'data_text1';
 
+    const MASTER_REPOSITORY_FIELD = 'data_text2';
+
     const ENDPOINT_VARIABLE = '_easyvocsconnector_endpoint_';
+    
+    const MASTER_REPOSITORY_VARIABLE = '_easyvocsconnector_repository_';
 
     const DATA_FIELD = 'data_text';
 
@@ -20,7 +24,7 @@ class EasyVocsConnectorType extends eZDataType
     {
         $this->eZDataType(
             self::DATA_TYPE_STRING,
-            ezpI18n::tr('extension/easyvocsconnector', 'Easy Vocs Connector'),
+            ezpI18n::tr('extension/easyvocsconnector', 'EasyVocs Connector'),
             array('serialize_supported' => true)
         );
     }
@@ -32,6 +36,7 @@ class EasyVocsConnectorType extends eZDataType
     function cloneClassAttribute($oldClassAttribute, $newClassAttribute)
     {
         $newClassAttribute->setAttribute(self::ENPOINT_FIELD, $oldClassAttribute->attribute(self::ENPOINT_FIELD));
+        $newClassAttribute->setAttribute(self::MASTER_REPOSITORY_FIELD, $oldClassAttribute->attribute(self::MASTER_REPOSITORY_FIELD));
     }
 
     /**
@@ -47,8 +52,43 @@ class EasyVocsConnectorType extends eZDataType
         if ($http->hasPostVariable($endpoint)) {
             $classAttribute->setAttribute(self::ENPOINT_FIELD, $http->postVariable($endpoint));
         }
+        $repository = $base . self::MASTER_REPOSITORY_VARIABLE . $classAttribute->attribute('id');
+        if ($http->hasPostVariable($repository)) {
+            $classAttribute->setAttribute(self::MASTER_REPOSITORY_FIELD, rtrim($http->postVariable($repository), '/'));
+        }
 
         return true;
+    }
+
+    /**
+     * @param eZContentClassAttribute $classAttribute
+     * @return array
+     */
+    public function classAttributeContent($classAttribute)
+    {
+        $repository = $classAttribute->attribute(self::MASTER_REPOSITORY_FIELD);
+        if (empty($repository)){
+            $repository = eZINI::instance('easyvocs_connetor.ini')->variable('MasterRepositorySettings', 'DefaultMasterRepositoryUri');
+        }
+        return array(
+            'endpoint' => $classAttribute->attribute(self::ENPOINT_FIELD),
+            'repository' => rtrim($repository, '/')
+        );
+    }
+
+    /**
+     * @param eZContentClassAttribute $classAttribute
+     * @param int $version     
+     */
+    public function storeClassAttribute($classAttribute, $version)
+    {
+        $classAttributeContent = $classAttribute->content();
+        $class = eZContentClass::fetch((int)$classAttribute->attribute('contentclass_id'));
+        $remoteRequestUrl = $classAttributeContent['repository'] . '/classtools/extra_definition/' . $class->attribute('identifier');
+        $remoteData = json_decode(eZHTTPTool::getDataByURL($remoteRequestUrl), true);
+        if($remoteData !== false){
+            OCClassExtraParametersManager::instance($class)->sync($remoteData);
+        }
     }
 
     /**
@@ -65,9 +105,14 @@ class EasyVocsConnectorType extends eZDataType
         $dom = $attributeParametersNode->ownerDocument;
 
         $endpoint = $classAttribute->attribute(self::ENPOINT_FIELD);
-        $endpointNode = $dom->createElement('public');
+        $endpointNode = $dom->createElement('endpoint');
         $endpointNode->appendChild($dom->createTextNode($endpoint));
         $attributeParametersNode->appendChild($endpointNode);
+
+        $repository = $classAttribute->attribute(self::MASTER_REPOSITORY_FIELD);
+        $repositoryNode = $dom->createElement('repository');
+        $repositoryNode->appendChild($dom->createTextNode($repository));
+        $attributeParametersNode->appendChild($repositoryNode);
     }
 
     /**
@@ -81,8 +126,11 @@ class EasyVocsConnectorType extends eZDataType
         $attributeParametersNode
     )
     {
-        $endpoint = $attributeParametersNode->getElementsByTagName('public')->item(0)->textContent;
+        $endpoint = $attributeParametersNode->getElementsByTagName('endpoint')->item(0)->textContent;
         $classAttribute->setAttribute(self::ENPOINT_FIELD, $endpoint);
+
+        $repository = $attributeParametersNode->getElementsByTagName('repository')->item(0)->textContent;
+        $classAttribute->setAttribute(self::MASTER_REPOSITORY_FIELD, $repository);
     }
 
     /**
@@ -104,6 +152,15 @@ class EasyVocsConnectorType extends eZDataType
     public function hasObjectAttributeContent($attribute)
     {
         return !empty($attribute->attribute(self::DATA_FIELD));
+    }
+
+    /**
+     * @param eZContentObjectAttribute $attribute
+     * @return mixed
+     */
+    public function objectAttributeContent($attribute)
+    {
+        return $attribute->attribute(self::DATA_FIELD);
     }
 
     public function isInformationCollector()
@@ -147,42 +204,79 @@ class EasyVocsConnectorType extends eZDataType
      * @param array $publishedNodes
      */
     function onPublish($contentObjectAttribute, $contentObject, $publishedNodes)
+    {        
+        self::refreshData($contentObjectAttribute, $contentObject);
+    }
+
+    public static function refreshData(eZContentObjectAttribute $contentObjectAttribute, eZContentObject $contentObject)
     {
         $endPoint = $contentObjectAttribute->contentClassAttribute()->attribute(self::ENPOINT_FIELD);
-        $response = self::getEasyVocsData($endPoint, $contentObject);
-        if ($response){
-            $contentObjectAttribute->setAttribute(self::DATA_FIELD, $response);
+        $data = self::getEasyVocsData($endPoint, $contentObject);                        
+        if ($data['data']){
+            $contentObjectAttribute->setAttribute(self::DATA_FIELD, $data['data']);
+            $contentObjectAttribute->store();
         }
+
+        if ($data['error']){
+            $data['content'] = self::generateMappedContent($contentObject);
+            eZDebug::writeError($data['error'], __METHOD__);
+        }
+
+        return $data;
+    }
+
+    public static function refreshObject(eZContentObject $object)
+    {
+        $data = null;
+        $dataMap = $object->dataMap();
+        foreach ($dataMap as $attribute) {
+            if($attribute->attribute('data_type_string') == EasyVocsConnectorType::DATA_TYPE_STRING){
+                $data = EasyVocsConnectorType::refreshData($attribute, $object);
+                break;
+            }
+        }
+        if ($data === null || $data['error']){
+            return false;
+        }
+
+        return true;
+    }
+
+    public static function generateMappedContent(eZContentObject $contentObject)
+    {
+        $request = new ezpRestRequest(
+            null,
+            'http-get',
+            eZINI::instance('site.ini')->variable('SiteSettings', 'SiteURL')
+        );
+        $hostUri = $request->getHostURI();
+        $apiPrefix = eZINI::instance('rest.ini')->variable('System', 'ApiPrefix');
+        $requestBaseUri = $hostUri . $apiPrefix . '/opendata/v2/easyvocs';
+
+        $apiContent = Content::createFromEzContentObject($contentObject);
+        $mapperEnv = new EasyVocsEnvironmentSettings();
+        $mapperEnv->request = $request;
+        $mapperEnv->requestBaseUri = $requestBaseUri;
+        $mapperContent = $mapperEnv->filterContent($apiContent);
+
+        return json_encode($mapperContent);
     }
 
     public static function getEasyVocsData($endPoint, eZContentObject $contentObject)
     {
+        $data = null;
+        $error = null;
         try {
-            $request = new ezpRestRequest(
-                null,
-                'http-get',
-                eZINI::instance('site.ini')->variable('SiteSettings', 'SiteURL')
-            );
-            $hostUri = $request->getHostURI();
-            $apiPrefix = eZINI::instance('rest.ini')->variable('System', 'ApiPrefix');
-            $requestBaseUri = $hostUri . $apiPrefix . '/opendata/v2/mapper';
-
-            $apiContent = Content::createFromEzContentObject($contentObject);
-            $mapperEnv = new MapperEnvironmentSettings();
-            $mapperEnv->request = $request;
-            $mapperEnv->requestBaseUri = $requestBaseUri;
-            $mapperContent = $mapperEnv->filterContent($apiContent);
-
-            $data = json_encode($mapperContent);
+            
+            $postData = self::generateMappedContent($contentObject);
 
             $headers = array();
             $headers[] = 'Content-Type: application/json';
-            $headers[] = 'ContentType: application/json';
-            $headers[] = 'Content-Length: ' . strlen($data);
+            $headers[] = 'Content-Length: ' . strlen($postData);
 
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_POST, 1);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
             curl_setopt($ch, CURLOPT_HEADER, 1);
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
             curl_setopt($ch, CURLOPT_URL, $endPoint);
@@ -204,20 +298,25 @@ class EasyVocsConnectorType extends eZDataType
 
             $response = curl_exec($ch);
 
+            $info = curl_getinfo($ch);
+            $headers = substr($response, 0, $info['header_size']);
+            $data = substr($response, $info['header_size']);
+
             if ($response === false) {
                 $errorCode = curl_errno($ch) * -1;
                 $errorMessage = curl_error($ch);
                 curl_close($ch);
-                eZDebug::writeError("Error $errorCode: $errorMessage on endpoint $endPoint", __METHOD__);
+                $error = "Error $errorCode: $errorMessage on endpoint $endPoint";
             }
 
-            return $response;
-
         } catch (Exception $e) {
-            eZDebug::writeError($e->getMessage(), __METHOD__);
+            $error = $e->getMessage();
         }
 
-        return null;
+        return array(
+            'data' => $data,
+            'error' => $error,
+        );
     }
 
 }

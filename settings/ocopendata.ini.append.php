@@ -1,8 +1,8 @@
 <?php /* #?ini charset="utf-8"?
 
 [EnvironmentSettingsPresets]
-AvailablePresets[]=mapper
+AvailablePresets[]=easyvocs
 
-[EnvironmentSettingsPresets_mapper]
+[EnvironmentSettingsPresets_easyvocs]
 CheckAccess=false
-PHPClass=MapperEnvironmentSettings
+PHPClass=EasyVocsEnvironmentSettings

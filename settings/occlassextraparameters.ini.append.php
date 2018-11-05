@@ -1,6 +1,6 @@
 <?php /*
 
 [AvailableHandlers]
-Handlers[mapper]=MapperClassExtraParameters
+Handlers[easyvocs]=EasyVocsClassExtraParameters
 
 */ ?>

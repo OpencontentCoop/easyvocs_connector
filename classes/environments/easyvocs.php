@@ -3,11 +3,11 @@
 use Opencontent\Opendata\Api\Values\Content;
 use Opencontent\Opendata\Api\ClassRepository;
 
-class MapperEnvironmentSettings extends DefaultEnvironmentSettings
+class EasyVocsEnvironmentSettings extends DefaultEnvironmentSettings
 {
     protected static $classDefinitions = array();
 
-    protected static $mapperExtraParameters = array();
+    protected static $easyvocsExtraParameters = array();
 
     public function filterContent(Content $content)
     {
@@ -16,24 +16,24 @@ class MapperEnvironmentSettings extends DefaultEnvironmentSettings
             self::$classDefinitions[$content->metadata->classIdentifier] = $classRepository->load($content->metadata->classIdentifier);
         }
 
-        $mapperContent = (array)self::$classDefinitions[$content->metadata->classIdentifier];
-        $mapperContent['id'] = $this->requestBaseUri . 'read/' . $content->metadata->id;
+        $easyvocsContent = (array)self::$classDefinitions[$content->metadata->classIdentifier];
+        $easyvocsContent['id'] = $this->request->getHostURI() . '/easyvocs/object/' . $content->metadata->id;
 
-        foreach ($mapperContent['fields'] as $index => $mappedField) {
-            $mapperContent['fields'][$index]['isPartOfTheHash'] = $this->isPartOfTheHash($content->metadata->classIdentifier, $mappedField['identifier']);
-            $mapperContent['fields'][$index]['value'] = $this->getFieldValue($content, $mappedField);
+        foreach ($easyvocsContent['fields'] as $index => $mappedField) {
+            $easyvocsContent['fields'][$index]['isPartOfTheHash'] = self::isPartOfTheHash($content->metadata->classIdentifier, $mappedField['identifier']);
+            $easyvocsContent['fields'][$index]['value'] = $this->getFieldValue($content, $mappedField);
         }
-        ksort($mapperContent);
+        ksort($easyvocsContent);
 
-        return $mapperContent;
+        return $easyvocsContent;
     }
 
-    private function isPartOfTheHash($classIdentifier, $fieldIdentifier)
+    public static function isPartOfTheHash($classIdentifier, $fieldIdentifier)
     {
-        if (!isset(self::$mapperExtraParameters[$classIdentifier])) {
-            self::$mapperExtraParameters[$classIdentifier] = OCClassExtraParameters::fetchByHandlerAndClassIdentifier(MapperClassExtraParameters::IDENTIFIER, $classIdentifier);
+        if (!isset(self::$easyvocsExtraParameters[$classIdentifier])) {
+            self::$easyvocsExtraParameters[$classIdentifier] = OCClassExtraParameters::fetchByHandlerAndClassIdentifier(EasyVocsClassExtraParameters::IDENTIFIER, $classIdentifier);
         }
-        foreach (self::$mapperExtraParameters[$classIdentifier] as $extraParameter) {
+        foreach (self::$easyvocsExtraParameters[$classIdentifier] as $extraParameter) {
             if ($extraParameter->attribute('attribute_identifier') == $fieldIdentifier) {
                 return true;
             }
@@ -53,7 +53,7 @@ class MapperEnvironmentSettings extends DefaultEnvironmentSettings
                         foreach ($content as $related) {
                             $related = (array)$related;
                             if (isset($related['id'])) {
-                                $contentUri[] = $this->requestBaseUri . 'read/' . $related['id'];
+                                $contentUri[] = $this->request->getHostURI() . '/easyvocs/object/' . $related['id'];
                             }
                         }
                         $content = $contentUri;

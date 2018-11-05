@@ -1,9 +1,9 @@
 <?php
 
-class MapperClassExtraParameters extends OCClassExtraParametersHandlerBase
+class EasyVocsClassExtraParameters extends OCClassExtraParametersHandlerBase
 {
 
-    const IDENTIFIER = 'mapper';
+    const IDENTIFIER = 'easyvocs';
 
     private $data;
 
@@ -14,7 +14,7 @@ class MapperClassExtraParameters extends OCClassExtraParametersHandlerBase
 
     public function getName()
     {
-        return 'Attributi esportabili a uso del mapper';
+        return 'Attributi mappabili a uso di EasyVocs';
     }
 
     public function attributes()
