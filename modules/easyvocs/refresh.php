@@ -15,9 +15,8 @@ if ($objectID){
         }
 
         if ($data['error']){            
-            echo '<h1>Error</h1>';
-            echo '<p>' . $data['error'] . '</p>';
-            echo '<pre>' . $data['content'] . '</pre>';
+            echo '<h1>Error</h1><strong>' . $data['error'] . '</strong>';            
+            echo '<pre><code>' . json_encode(json_decode($data['content']), JSON_PRETTY_PRINT) . '</code></pre>';
             eZExecution::cleanExit();
         }
     

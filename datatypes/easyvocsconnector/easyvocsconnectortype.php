@@ -218,7 +218,7 @@ class EasyVocsConnectorType extends eZDataType
         }
 
         if ($data['error']){
-            $data['content'] = self::generateMappedContent($contentObject);
+            $data['content'] = self::generateMappedContent($contentObject);            
             eZDebug::writeError($data['error'], __METHOD__);
         }
 
@@ -236,13 +236,13 @@ class EasyVocsConnectorType extends eZDataType
             }
         }
         if ($data === null || $data['error']){
-            return false;
+            return isset($data['error']) ? $data['error'] : false;
         }
 
         return true;
     }
 
-    public static function generateMappedContent(eZContentObject $contentObject)
+    private static function generateMappedContent(eZContentObject $contentObject)
     {
         $request = new ezpRestRequest(
             null,
