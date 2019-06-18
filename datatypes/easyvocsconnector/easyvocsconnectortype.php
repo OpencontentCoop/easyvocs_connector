@@ -242,7 +242,7 @@ class EasyVocsConnectorType extends eZDataType
         return true;
     }
 
-    private static function generateMappedContent(eZContentObject $contentObject)
+    private static function generateMappedContent(eZContentObject $contentObject, $asJson = true)
     {
         $request = new ezpRestRequest(
             null,
@@ -259,7 +259,12 @@ class EasyVocsConnectorType extends eZDataType
         $mapperEnv->requestBaseUri = $requestBaseUri;
         $mapperContent = $mapperEnv->filterContent($apiContent);
 
-        return json_encode($mapperContent);
+        if ( $asJson ) {
+            return json_encode($mapperContent);
+        } else {
+            return $mapperContent;
+        }
+
     }
 
     public static function getEasyVocsData($endPoint, eZContentObject $contentObject)
@@ -267,8 +272,13 @@ class EasyVocsConnectorType extends eZDataType
         $data = null;
         $error = null;
         try {
-            
-            $postData = self::generateMappedContent($contentObject);
+
+            $postData =  array(
+                'locale' => eZLocale::currentLocaleCode(),
+                'data'   => self::generateMappedContent($contentObject, false)
+            );
+
+            $postData = json_encode($postData);
 
             $headers = array();
             $headers[] = 'Content-Type: application/json';
